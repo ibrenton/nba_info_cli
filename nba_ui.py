@@ -26,6 +26,8 @@ class NBAStatsUI:
         self.running = True
         self.selected_team = None
         self.teams_dict = {}  # Cache for team lookups
+        self.primary_color = 'cyan'  # Default color
+        self.secondary_color = 'yellow'  # Default color
     
     def clear_screen(self):
         """Clear the terminal screen."""
@@ -47,10 +49,10 @@ class NBAStatsUI:
     def print_header(self, title, emoji="🏀"):
         """Print a formatted header with color."""
         panel = Panel(
-            f"[bold yellow]{emoji} {title}[/bold yellow]",
-            style="bold cyan",
+            f"[bold {self.secondary_color}]{emoji} {title}[/bold {self.secondary_color}]",
+            style=f"bold {self.primary_color}",
             expand=True,
-            border_style="cyan"
+            border_style=self.primary_color
         )
         console.print(panel)
     
@@ -58,12 +60,12 @@ class NBAStatsUI:
         """Print a colorful menu with numbered options."""
         self.print_header(title)
         
-        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
-        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table = Table(show_header=False, box=box.ROUNDED, border_style=self.primary_color)
+        table.add_column("#", justify="center", style=f"bold {self.secondary_color}", width=3)
         table.add_column("Option", style="white")
         
         for i, option in enumerate(options, 1):
-            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+            table.add_row(f"[bold {self.secondary_color}]{i}[/bold {self.secondary_color}]", option)
         
         extra_num = len(options) + 1
         extra_text = "Back to Main Menu" if title != "NBA STATS TOOL - MAIN MENU" else "Exit"
@@ -77,7 +79,7 @@ class NBAStatsUI:
         while True:
             try:
                 choice = Prompt.ask(
-                    "[bold cyan]Select an option[/bold cyan]",
+                    f"[bold {self.primary_color}]Select an option[/bold {self.primary_color}]",
                     default="1"
                 )
                 choice_num = int(choice)
@@ -88,7 +90,7 @@ class NBAStatsUI:
             except ValueError:
                 console.print("[bold red]❌ Please enter a valid number[/bold red]")
             except KeyboardInterrupt:
-                console.print("\n[bold yellow]👋 Thanks for using NBA Stats Tool![/bold yellow]")
+                console.print(f"\n[bold {self.secondary_color}]👋 Thanks for using NBA Stats Tool![/bold {self.secondary_color}]")
                 sys.exit(0)
     
     def pause(self):
@@ -102,18 +104,30 @@ class NBAStatsUI:
             for team in teams:
                 self.teams_dict[team['abbreviation']] = team
     
+    def set_team_colors(self, team_abbr):
+        """Set UI colors based on selected team."""
+        if team_abbr in self.teams_dict:
+            team = self.teams_dict[team_abbr]
+            self.primary_color = team.get('primary', 'cyan')
+            self.secondary_color = team.get('secondary', 'yellow')
+    
+    def reset_to_default_colors(self):
+        """Reset UI colors to default scheme."""
+        self.primary_color = 'cyan'
+        self.secondary_color = 'yellow'
+    
     def select_team_prompt(self):
         """Allow user to select a team or use all teams."""
         self.print_header("TEAM SELECTION", "🏆")
         
-        console.print("[bold cyan]Would you like to filter by a specific team?[/bold cyan]\n")
+        console.print(f"[bold {self.primary_color}]Would you like to filter by a specific team?[/bold {self.primary_color}]\n")
         
-        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
-        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table = Table(show_header=False, box=box.ROUNDED, border_style=self.primary_color)
+        table.add_column("#", justify="center", style=f"bold {self.secondary_color}", width=3)
         table.add_column("Option", style="white")
         
-        table.add_row("[bold yellow]1[/bold yellow]", "View All Teams")
-        table.add_row("[bold yellow]2[/bold yellow]", "Select Specific Team")
+        table.add_row(f"[bold {self.secondary_color}]1[/bold {self.secondary_color}]", "View All Teams")
+        table.add_row(f"[bold {self.secondary_color}]2[/bold {self.secondary_color}]", "Select Specific Team")
         table.add_row("[bold red]3[/bold red]", "Back to Main Menu")
         
         console.print(table)
@@ -123,11 +137,13 @@ class NBAStatsUI:
         
         if choice == 1:
             self.selected_team = None
+            self.reset_to_default_colors()  # Revert to default colors
             return True
         elif choice == 2:
             team = self.get_team_selection()
             if team:
                 self.selected_team = team
+                self.set_team_colors(team)  # Update colors when team is selected
                 return True
             return False
         else:
@@ -187,7 +203,7 @@ class NBAStatsUI:
         # Show selected team if any
         if self.selected_team:
             team_name = self.teams_dict.get(self.selected_team, {}).get('displayName', self.selected_team)
-            console.print(f"[bold green]📌 Currently viewing: {team_name} ({self.selected_team})[/bold green]\n")
+            console.print(f"[bold {self.primary_color}]📌 Currently viewing: {team_name} ({self.selected_team})[/bold {self.primary_color}]\n")
         
         options = [
             "📊 View Recent Game Scores",
@@ -205,7 +221,9 @@ class NBAStatsUI:
         elif choice == 2:
             self.upcoming_games_menu()
         elif choice == 3:
-            self.select_team_prompt()
+            if self.select_team_prompt():
+                # Colors updated in select_team_prompt
+                pass
         elif choice == 4:
             self.game_stats_menu()
         elif choice == 5:
@@ -217,16 +235,16 @@ class NBAStatsUI:
         """Menu for viewing recent games."""
         self.print_header("RECENT GAME SCORES", "📊")
         
-        console.print("[bold cyan]How many days back would you like to see?[/bold cyan]\n")
+        console.print(f"[bold {self.primary_color}]How many days back would you like to see?[/bold {self.primary_color}]\n")
         
         options = ["1 day", "3 days", "7 days", "14 days", "Custom"]
         
-        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
-        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table = Table(show_header=False, box=box.ROUNDED, border_style=self.primary_color)
+        table.add_column("#", justify="center", style=f"bold {self.secondary_color}", width=3)
         table.add_column("Option", style="white")
         
         for i, option in enumerate(options, 1):
-            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+            table.add_row(f"[bold {self.secondary_color}]{i}[/bold {self.secondary_color}]", option)
         table.add_row(f"[bold red]6[/bold red]", "Back to Main Menu")
         
         console.print(table)
@@ -247,17 +265,17 @@ class NBAStatsUI:
         else:
             return
         
-        console.print(f"\n[bold yellow]⏳ Fetching games from the last {days} day(s)...[/bold yellow]")
+        console.print(f"\n[bold {self.secondary_color}]⏳ Fetching games from the last {days} day(s)...[/bold {self.secondary_color}]")
         games = self.nba.get_recent_games(days=days, team=self.selected_team)
         
         if games:
             self.display_recent_games_table(games)
-            print(f"\n[bold cyan]📊 Total games found: {len(games)}[/bold cyan]")
+            console.print(f"\n[bold {self.primary_color}]📊 Total games found: {len(games)}[/bold {self.primary_color}]")
             
             # Ask if user wants to see detailed stats
             console.print("\n" + "─" * 80)
             see_details = Prompt.ask(
-                "[bold cyan]Would you like to see detailed stats for any of these games?[/bold cyan]",
+                f"[bold {self.primary_color}]Would you like to see detailed stats for any of these games?[/bold {self.primary_color}]",
                 choices=["y", "n"],
                 default="n"
             )
@@ -461,7 +479,7 @@ class NBAStatsUI:
         """Display recent games in a colorful table."""
         console.print()
         
-        table = Table(title="[bold yellow]Recent Game Results[/bold yellow]", box=box.ROUNDED, border_style="cyan")
+        table = Table(title=f"[bold {self.secondary_color}]Recent Game Results[/bold {self.secondary_color}]", box=box.ROUNDED, border_style=self.primary_color)
         table.add_column("Date", style="cyan", width=12)
         table.add_column("Away Team", style="magenta", width=15)
         table.add_column("Score", style="white", justify="center", width=10)
@@ -493,7 +511,7 @@ class NBAStatsUI:
         """Display upcoming games in a colorful table."""
         console.print()
         
-        table = Table(title="[bold yellow]Upcoming Games[/bold yellow]", box=box.ROUNDED, border_style="cyan")
+        table = Table(title=f"[bold {self.secondary_color}]Upcoming Games[/bold {self.secondary_color}]", box=box.ROUNDED, border_style=self.primary_color)
         table.add_column("Date", style="cyan", width=12)
         table.add_column("Time (PT)", style="yellow", width=12)
         table.add_column("Away Team", style="magenta", width=15)
