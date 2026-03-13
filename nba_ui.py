@@ -1,67 +1,200 @@
 #!/usr/bin/env python3
 """
-NBA Stats Tool - Interactive User Interface
+NBA Stats Tool - Enhanced Interactive User Interface with Rich Colors
 
-Interactive command-line interface for browsing NBA game data.
+Interactive command-line interface with beautiful formatting for browsing NBA game data.
 """
 
 from nba_stats import NBAStats
 import sys
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich import box
+from rich.align import Align
+from rich.text import Text
+
+console = Console()
 
 
 class NBAStatsUI:
-    """Interactive user interface for NBA Stats tool."""
+    """Enhanced interactive user interface for NBA Stats tool with rich colors."""
     
     def __init__(self):
         self.nba = NBAStats()
         self.running = True
+        self.selected_team = None
+        self.teams_dict = {}  # Cache for team lookups
     
     def clear_screen(self):
         """Clear the terminal screen."""
-        print("\n" * 2)
+        console.clear()
     
-    def print_header(self, title):
-        """Print a formatted header."""
-        print("\n" + "=" * 80)
-        print(f"🏀 {title}")
-        print("=" * 80)
+    def print_welcome(self):
+        """Print a colorful welcome banner."""
+        self.clear_screen()
+        
+        welcome_panel = Panel(
+            "[bold yellow]🏀 NBA STATS TOOL 🏀[/bold yellow]\n\n"
+            "[bold white]Your One-Stop Shop for Live NBA Game Data[/bold white]",
+            style="bold cyan",
+            border_style="cyan",
+            expand=False
+        )
+        console.print(welcome_panel)
+    
+    def print_header(self, title, emoji="🏀"):
+        """Print a formatted header with color."""
+        panel = Panel(
+            f"[bold yellow]{emoji} {title}[/bold yellow]",
+            style="bold cyan",
+            expand=True,
+            border_style="cyan"
+        )
+        console.print(panel)
     
     def print_menu(self, title, options):
-        """Print a menu with numbered options."""
+        """Print a colorful menu with numbered options."""
         self.print_header(title)
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
         for i, option in enumerate(options, 1):
-            print(f"{i}. {option}")
-        print(f"{len(options) + 1}. Back to Main Menu" if title != "NBA STATS TOOL - MAIN MENU" else f"{len(options) + 1}. Exit")
-        print()
+            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+        
+        extra_num = len(options) + 1
+        extra_text = "Back to Main Menu" if title != "NBA STATS TOOL - MAIN MENU" else "Exit"
+        table.add_row(f"[bold red]{extra_num}[/bold red]", f"[bold red]{extra_text}[/bold red]")
+        
+        console.print(table)
+        console.print()
     
     def get_user_choice(self, max_option):
-        """Get and validate user input."""
+        """Get and validate user input with color."""
         while True:
             try:
-                choice = input(f"Select an option (1-{max_option}): ").strip()
+                choice = Prompt.ask(
+                    "[bold cyan]Select an option[/bold cyan]",
+                    default="1"
+                )
                 choice_num = int(choice)
                 if 1 <= choice_num <= max_option:
                     return choice_num
                 else:
-                    print(f"❌ Please enter a number between 1 and {max_option}")
+                    console.print(f"[bold red]❌ Please enter a number between 1 and {max_option}[/bold red]")
             except ValueError:
-                print("❌ Please enter a valid number")
+                console.print("[bold red]❌ Please enter a valid number[/bold red]")
             except KeyboardInterrupt:
-                print("\n\nExiting...")
+                console.print("\n[bold yellow]👋 Thanks for using NBA Stats Tool![/bold yellow]")
                 sys.exit(0)
     
     def pause(self):
         """Pause and wait for user to press Enter."""
-        input("\nPress Enter to continue...")
+        Prompt.ask("[grey50]Press Enter to continue[/grey50]", default="")
+    
+    def load_teams(self):
+        """Load and cache team data."""
+        if not self.teams_dict:
+            teams = self.nba.get_teams()
+            for team in teams:
+                self.teams_dict[team['abbreviation']] = team
+    
+    def select_team_prompt(self):
+        """Allow user to select a team or use all teams."""
+        self.print_header("TEAM SELECTION", "🏆")
+        
+        console.print("[bold cyan]Would you like to filter by a specific team?[/bold cyan]\n")
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
+        table.add_row("[bold yellow]1[/bold yellow]", "View All Teams")
+        table.add_row("[bold yellow]2[/bold yellow]", "Select Specific Team")
+        table.add_row("[bold red]3[/bold red]", "Back to Main Menu")
+        
+        console.print(table)
+        console.print()
+        
+        choice = self.get_user_choice(3)
+        
+        if choice == 1:
+            self.selected_team = None
+            return True
+        elif choice == 2:
+            team = self.get_team_selection()
+            if team:
+                self.selected_team = team
+                return True
+            return False
+        else:
+            return False
+    
+    def get_team_selection(self):
+        """Get team abbreviation from user with rich display."""
+        self.print_header("SELECT A TEAM", "🏀")
+        
+        self.load_teams()
+        
+        console.print("[bold cyan]Enter team abbreviation (e.g., LAL, BOS, GSW)[/bold cyan]")
+        console.print("[bold yellow]Type 'list' to see all teams, or 'cancel' to go back\n[/bold yellow]")
+        
+        while True:
+            team_input = Prompt.ask("[bold green]Team[/bold green]").strip().upper()
+            
+            if team_input == 'CANCEL':
+                return None
+            elif team_input == 'LIST':
+                self.show_teams_for_selection()
+            elif len(team_input) >= 2:
+                if team_input in self.teams_dict:
+                    team_name = self.teams_dict[team_input].get('displayName', team_input)
+                    console.print(f"\n[bold green]✓ Selected: {team_name}[/bold green]\n")
+                    return team_input
+                else:
+                    console.print(f"[bold red]❌ Team '{team_input}' not found. Type 'list' to see all teams.[/bold red]\n")
+            else:
+                console.print("[bold red]❌ Please enter a valid team abbreviation[/bold red]\n")
+    
+    def show_teams_for_selection(self):
+        """Display all teams in a colorful table."""
+        self.print_header("ALL NBA TEAMS", "📋")
+        
+        self.load_teams()
+        teams = sorted(self.teams_dict.values(), key=lambda x: x.get('abbreviation', ''))
+        
+        table = Table(title="[bold yellow]30 NBA Teams[/bold yellow]", box=box.ROUNDED, border_style="cyan")
+        table.add_column("ABBR", justify="center", style="bold yellow", width=6)
+        table.add_column("Team Name", style="cyan")
+        table.add_column("Location", style="magenta")
+        
+        for team in teams:
+            abbr = team.get('abbreviation', 'N/A')
+            name = team.get('displayName', 'N/A')
+            location = team.get('location', 'N/A')
+            table.add_row(abbr, name, location)
+        
+        console.print(table)
+        console.print()
     
     def main_menu(self):
         """Display and handle main menu."""
+        self.print_header("MAIN MENU", "🏀")
+        
+        # Show selected team if any
+        if self.selected_team:
+            team_name = self.teams_dict.get(self.selected_team, {}).get('displayName', self.selected_team)
+            console.print(f"[bold green]📌 Currently viewing: {team_name} ({self.selected_team})[/bold green]\n")
+        
         options = [
-            "View Recent Game Scores",
-            "View Upcoming Game Schedule",
-            "Search by Team",
-            "View Detailed Game Statistics",
-            "View All NBA Teams"
+            "📊 View Recent Game Scores",
+            "📅 View Upcoming Game Schedule",
+            "🔍 Change Team Selection",
+            "📈 View Detailed Game Statistics",
+            "🏀 View All NBA Teams"
         ]
         
         self.print_menu("NBA STATS TOOL - MAIN MENU", options)
@@ -72,7 +205,7 @@ class NBAStatsUI:
         elif choice == 2:
             self.upcoming_games_menu()
         elif choice == 3:
-            self.team_search_menu()
+            self.select_team_prompt()
         elif choice == 4:
             self.game_stats_menu()
         elif choice == 5:
@@ -82,17 +215,24 @@ class NBAStatsUI:
     
     def recent_games_menu(self):
         """Menu for viewing recent games."""
-        self.print_header("RECENT GAME SCORES")
+        self.print_header("RECENT GAME SCORES", "📊")
         
-        print("\nHow many days back would you like to see?")
-        print("1. Today (last 24 hours)")
-        print("2. Last 3 days")
-        print("3. Last 7 days")
-        print("4. Custom number of days")
-        print("5. Back to Main Menu")
-        print()
+        console.print("[bold cyan]How many days back would you like to see?[/bold cyan]\n")
         
-        choice = self.get_user_choice(5)
+        options = ["1 day", "3 days", "7 days", "14 days", "Custom"]
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
+        for i, option in enumerate(options, 1):
+            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+        table.add_row(f"[bold red]6[/bold red]", "Back to Main Menu")
+        
+        console.print(table)
+        console.print()
+        
+        choice = self.get_user_choice(6)
         
         if choice == 1:
             days = 1
@@ -101,40 +241,53 @@ class NBAStatsUI:
         elif choice == 3:
             days = 7
         elif choice == 4:
+            days = 14
+        elif choice == 5:
             days = self.get_custom_days()
         else:
             return
         
-        print(f"\n⏳ Fetching games from the last {days} day(s)...")
-        games = self.nba.get_recent_games(days=days)
+        console.print(f"\n[bold yellow]⏳ Fetching games from the last {days} day(s)...[/bold yellow]")
+        games = self.nba.get_recent_games(days=days, team=self.selected_team)
         
         if games:
-            self.nba.display_recent_games(games)
-            print(f"\n📊 Total games found: {len(games)}")
+            self.display_recent_games_table(games)
+            print(f"\n[bold cyan]📊 Total games found: {len(games)}[/bold cyan]")
             
-            # Ask if user wants to see detailed stats for any game
-            print("\n" + "-" * 80)
-            see_details = input("\nWould you like to see detailed stats for any of these games? (y/n): ").strip().lower()
+            # Ask if user wants to see detailed stats
+            console.print("\n" + "─" * 80)
+            see_details = Prompt.ask(
+                "[bold cyan]Would you like to see detailed stats for any of these games?[/bold cyan]",
+                choices=["y", "n"],
+                default="n"
+            )
             if see_details == 'y':
                 self.select_game_for_stats(games)
         else:
-            print("\n⚠️  No games found for the selected time period.")
+            console.print("\n[bold red]⚠️  No games found for the selected criteria.[/bold red]")
         
         self.pause()
     
     def upcoming_games_menu(self):
         """Menu for viewing upcoming games."""
-        self.print_header("UPCOMING GAME SCHEDULE")
+        self.print_header("UPCOMING GAME SCHEDULE", "📅")
         
-        print("\nHow many days ahead would you like to see?")
-        print("1. Today")
-        print("2. Next 3 days")
-        print("3. Next 7 days")
-        print("4. Custom number of days")
-        print("5. Back to Main Menu")
-        print()
+        console.print("[bold cyan]How many days ahead would you like to see?[/bold cyan]\n")
         
-        choice = self.get_user_choice(5)
+        options = ["Today", "3 days", "7 days", "14 days", "Custom"]
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
+        for i, option in enumerate(options, 1):
+            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+        table.add_row(f"[bold red]6[/bold red]", "Back to Main Menu")
+        
+        console.print(table)
+        console.print()
+        
+        choice = self.get_user_choice(6)
         
         if choice == 1:
             days = 1
@@ -143,137 +296,99 @@ class NBAStatsUI:
         elif choice == 3:
             days = 7
         elif choice == 4:
+            days = 14
+        elif choice == 5:
             days = self.get_custom_days()
         else:
             return
         
-        print(f"\n⏳ Fetching upcoming games for the next {days} day(s)...")
-        games = self.nba.get_upcoming_games(days=days)
+        console.print(f"\n[bold yellow]⏳ Fetching upcoming games for the next {days} day(s)...[/bold yellow]")
+        games = self.nba.get_upcoming_games(days=days, team=self.selected_team)
         
         if games:
-            self.nba.display_upcoming_games(games)
-            print(f"\n📊 Total games scheduled: {len(games)}")
+            self.display_upcoming_games_table(games)
+            print(f"\n[bold cyan]📊 Total games scheduled: {len(games)}[/bold cyan]")
         else:
-            print("\n⚠️  No upcoming games found for the selected time period.")
-        
-        self.pause()
-    
-    def team_search_menu(self):
-        """Menu for searching by team."""
-        self.print_header("SEARCH BY TEAM")
-        
-        print("\nWhat would you like to see?")
-        print("1. Team's Recent Games")
-        print("2. Team's Upcoming Games")
-        print("3. Team's Complete Schedule (Recent + Upcoming)")
-        print("4. Back to Main Menu")
-        print()
-        
-        choice = self.get_user_choice(4)
-        
-        if choice == 4:
-            return
-        
-        # Get team abbreviation
-        team_abbr = self.get_team_selection()
-        if not team_abbr:
-            return
-        
-        if choice == 1:
-            days = self.get_days_selection()
-            print(f"\n⏳ Fetching recent games for {team_abbr}...")
-            games = self.nba.get_recent_games(days=days, team=team_abbr)
-            
-            if games:
-                self.nba.display_recent_games(games)
-                print(f"\n📊 Total games found: {len(games)}")
-                
-                # Show team record
-                wins, losses = self.calculate_record(games, team_abbr)
-                print(f"\n🏆 {team_abbr} Record: {wins}-{losses}")
-                if wins + losses > 0:
-                    print(f"📈 Win Percentage: {(wins/(wins+losses)*100):.1f}%")
-                
-                # Ask if user wants to see detailed stats
-                print("\n" + "-" * 80)
-                see_details = input("\nWould you like to see detailed stats for any of these games? (y/n): ").strip().lower()
-                if see_details == 'y':
-                    self.select_game_for_stats(games)
-            else:
-                print(f"\n⚠️  No recent games found for {team_abbr}.")
-        
-        elif choice == 2:
-            days = self.get_days_selection()
-            print(f"\n⏳ Fetching upcoming games for {team_abbr}...")
-            games = self.nba.get_upcoming_games(days=days, team=team_abbr)
-            
-            if games:
-                self.nba.display_upcoming_games(games)
-                print(f"\n📊 Total games scheduled: {len(games)}")
-            else:
-                print(f"\n⚠️  No upcoming games found for {team_abbr}.")
-        
-        elif choice == 3:
-            days = self.get_days_selection()
-            print(f"\n⏳ Fetching complete schedule for {team_abbr}...")
-            recent = self.nba.get_recent_games(days=days, team=team_abbr)
-            upcoming = self.nba.get_upcoming_games(days=days, team=team_abbr)
-            
-            if recent:
-                self.nba.display_recent_games(recent)
-                wins, losses = self.calculate_record(recent, team_abbr)
-                print(f"\n🏆 Recent Record: {wins}-{losses}")
-            
-            if upcoming:
-                self.nba.display_upcoming_games(upcoming)
-            
-            if not recent and not upcoming:
-                print(f"\n⚠️  No games found for {team_abbr}.")
+            console.print("\n[bold red]⚠️  No upcoming games found for the selected criteria.[/bold red]")
         
         self.pause()
     
     def game_stats_menu(self):
         """Menu for viewing detailed game statistics."""
-        self.print_header("DETAILED GAME STATISTICS")
+        self.print_header("DETAILED GAME STATISTICS", "📈")
         
-        print("\nHow would you like to select a game?")
-        print("1. Choose from recent games")
-        print("2. Enter game ID manually")
-        print("3. Back to Main Menu")
-        print()
+        console.print("[bold cyan]How would you like to select a game?[/bold cyan]\n")
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
+        table.add_row("[bold yellow]1[/bold yellow]", "Choose from recent games")
+        table.add_row("[bold yellow]2[/bold yellow]", "Enter game ID manually")
+        table.add_row("[bold red]3[/bold red]", "Back to Main Menu")
+        
+        console.print(table)
+        console.print()
         
         choice = self.get_user_choice(3)
         
         if choice == 1:
             days = self.get_days_selection()
-            print(f"\n⏳ Fetching recent games...")
-            games = self.nba.get_recent_games(days=days)
+            console.print(f"\n[bold yellow]⏳ Fetching recent games...[/bold yellow]")
+            games = self.nba.get_recent_games(days=days, team=self.selected_team)
             
             if games:
                 self.select_game_for_stats(games)
             else:
-                print("\n⚠️  No recent games found.")
+                console.print("\n[bold red]⚠️  No recent games found.[/bold red]")
                 self.pause()
         
         elif choice == 2:
-            game_id = input("\nEnter the game ID: ").strip()
+            game_id = Prompt.ask("[bold green]Game ID[/bold green]").strip()
             if game_id:
                 self.show_game_stats(game_id)
                 self.pause()
     
     def select_game_for_stats(self, games):
         """Allow user to select a game from a list to view detailed stats."""
-        self.print_header("SELECT A GAME")
+        self.print_header("SELECT A GAME", "🎯")
         
-        print("\nAvailable Games:")
-        for i, game in enumerate(games[:20], 1):  # Limit to 20 games
-            print(f"{i}. {game['date'][:10]} - {game['visitor_team_abbr']} ({game['visitor_score']}) @ "
-                  f"{game['home_team_abbr']} ({game['home_score']}) - {game['status']}")
+        console.print("[bold cyan]Available Games:[/bold cyan]\n")
+        
+        table = Table(box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Date", style="cyan", width=12)
+        table.add_column("Away", style="magenta", width=8)
+        table.add_column("Score", style="white", justify="center", width=8)
+        table.add_column("Home", style="magenta", width=8)
+        table.add_column("Score", style="white", justify="center", width=8)
+        table.add_column("Status", style="yellow", width=10)
+        
+        display_games = games[:20]
+        for i, game in enumerate(display_games, 1):
+            date_str = game['date'][:10]
+            away_abbr = game['visitor_team_abbr']
+            away_score = str(game['visitor_score'])
+            home_abbr = game['home_team_abbr']
+            home_score = str(game['home_score'])
+            status = game['status']
+            
+            # Color code the score
+            if away_score != '' and home_score != '':
+                if int(away_score) > int(home_score):
+                    away_score = f"[bold green]{away_score}[/bold green]"
+                    home_score = f"[red]{home_score}[/red]"
+                else:
+                    away_score = f"[red]{away_score}[/red]"
+                    home_score = f"[bold green]{home_score}[/bold green]"
+            
+            table.add_row(f"[bold yellow]{i}[/bold yellow]", date_str, away_abbr, away_score, home_abbr, home_score, status)
+        
+        console.print(table)
         
         if len(games) > 20:
-            print(f"\n(Showing first 20 of {len(games)} games)")
+            console.print(f"\n[grey50](Showing first 20 of {len(games)} games)[/grey50]")
         
-        print(f"\n{min(len(games), 20) + 1}. Cancel")
         print()
         
         choice = self.get_user_choice(min(len(games), 20) + 1)
@@ -285,72 +400,37 @@ class NBAStatsUI:
     
     def show_game_stats(self, game_id):
         """Display detailed statistics for a specific game."""
-        print(f"\n⏳ Fetching detailed statistics for game {game_id}...")
+        console.print(f"\n[bold yellow]⏳ Fetching detailed statistics...[/bold yellow]")
         stats = self.nba.get_game_stats(game_id)
         
         if stats and stats.get('home_team'):
-            self.nba.display_game_stats(stats)
+            self.display_game_stats_table(stats)
         else:
-            print(f"\n⚠️  Could not retrieve statistics for game {game_id}.")
+            console.print(f"\n[bold red]⚠️  Could not retrieve statistics for game {game_id}.[/bold red]")
     
     def show_all_teams(self):
         """Display all NBA teams."""
-        self.print_header("ALL NBA TEAMS")
-        
-        print("\n⏳ Fetching team information...")
-        teams = self.nba.get_teams()
-        
-        if teams:
-            print(f"\n📊 Total Teams: {len(teams)}\n")
-            print(f"{'ABBR':<6} {'TEAM NAME':<35} {'LOCATION':<20}")
-            print("-" * 80)
-            
-            for team in sorted(teams, key=lambda x: x.get('abbreviation', '')):
-                abbr = team.get('abbreviation', 'N/A')
-                name = team.get('displayName', 'N/A')
-                location = team.get('location', 'N/A')
-                print(f"{abbr:<6} {name:<35} {location:<20}")
-        else:
-            print("\n⚠️  Could not retrieve team information.")
-        
+        self.show_teams_for_selection()
         self.pause()
-    
-    def get_team_selection(self):
-        """Get team abbreviation from user."""
-        print("\nEnter team abbreviation (e.g., LAL, BOS, GSW)")
-        print("Type 'list' to see all teams, or 'cancel' to go back")
-        
-        while True:
-            team_input = input("\nTeam: ").strip().upper()
-            
-            if team_input == 'CANCEL':
-                return None
-            elif team_input == 'LIST':
-                teams = self.nba.get_teams()
-                print("\nAvailable Teams:")
-                for i, team in enumerate(sorted(teams, key=lambda x: x.get('abbreviation', '')), 1):
-                    abbr = team.get('abbreviation', 'N/A')
-                    name = team.get('displayName', 'N/A')
-                    print(f"  {abbr:<6} - {name}")
-                    if i % 3 == 0:
-                        print()
-                print()
-            elif len(team_input) >= 2:
-                return team_input
-            else:
-                print("❌ Please enter a valid team abbreviation")
     
     def get_days_selection(self):
         """Get number of days from user."""
-        print("\nSelect time range:")
-        print("1. 1 day")
-        print("2. 3 days")
-        print("3. 7 days")
-        print("4. 14 days")
-        print("5. Custom")
-        print()
+        self.print_header("SELECT TIME RANGE", "⏰")
         
-        choice = self.get_user_choice(5)
+        options = ["1 day", "3 days", "7 days", "14 days", "Custom"]
+        
+        table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
+        table.add_column("#", justify="center", style="bold yellow", width=3)
+        table.add_column("Option", style="white")
+        
+        for i, option in enumerate(options, 1):
+            table.add_row(f"[bold yellow]{i}[/bold yellow]", option)
+        table.add_row(f"[bold red]6[/bold red]", "Back")
+        
+        console.print(table)
+        console.print()
+        
+        choice = self.get_user_choice(6)
         
         if choice == 1:
             return 1
@@ -360,67 +440,177 @@ class NBAStatsUI:
             return 7
         elif choice == 4:
             return 14
-        else:
+        elif choice == 5:
             return self.get_custom_days()
+        else:
+            return 7  # Default
     
     def get_custom_days(self):
         """Get custom number of days from user."""
         while True:
             try:
-                days = int(input("\nEnter number of days (1-30): ").strip())
+                days = int(Prompt.ask("[bold green]Number of days[/bold green] (1-30)", default="7"))
                 if 1 <= days <= 30:
                     return days
                 else:
-                    print("❌ Please enter a number between 1 and 30")
+                    console.print("[bold red]❌ Please enter a number between 1 and 30[/bold red]")
             except ValueError:
-                print("❌ Please enter a valid number")
+                console.print("[bold red]❌ Please enter a valid number[/bold red]")
     
-    def calculate_record(self, games, team_abbr):
-        """Calculate wins and losses for a team."""
-        wins = 0
-        losses = 0
+    def display_recent_games_table(self, games):
+        """Display recent games in a colorful table."""
+        console.print()
+        
+        table = Table(title="[bold yellow]Recent Game Results[/bold yellow]", box=box.ROUNDED, border_style="cyan")
+        table.add_column("Date", style="cyan", width=12)
+        table.add_column("Away Team", style="magenta", width=15)
+        table.add_column("Score", style="white", justify="center", width=10)
+        table.add_column("Home Team", style="magenta", width=15)
+        table.add_column("Score", style="white", justify="center", width=10)
+        table.add_column("Status", style="yellow", width=8)
         
         for game in games:
-            is_home = game['home_team_abbr'] == team_abbr
-            team_score = game['home_score'] if is_home else game['visitor_score']
-            opponent_score = game['visitor_score'] if is_home else game['home_score']
+            date_str = game['date'][:10]
+            away_team = f"{game['visitor_team_abbr']} {game['visitor_team'].split()[-1]}"
+            away_score = str(game['visitor_score'])
+            home_team = f"{game['home_team_abbr']} {game['home_team'].split()[-1]}"
+            home_score = str(game['home_score'])
+            status = game['status']
             
-            if team_score > opponent_score:
-                wins += 1
+            # Color code winning team
+            if int(away_score) > int(home_score):
+                away_score = f"[bold green]{away_score}[/bold green]"
+                home_score = f"[red]{home_score}[/red]"
             else:
-                losses += 1
+                away_score = f"[red]{away_score}[/red]"
+                home_score = f"[bold green]{home_score}[/bold green]"
+            
+            table.add_row(date_str, away_team, away_score, home_team, home_score, status)
         
-        return wins, losses
+        console.print(table)
+    
+    def display_upcoming_games_table(self, games):
+        """Display upcoming games in a colorful table."""
+        console.print()
+        
+        table = Table(title="[bold yellow]Upcoming Games[/bold yellow]", box=box.ROUNDED, border_style="cyan")
+        table.add_column("Date", style="cyan", width=12)
+        table.add_column("Time (PT)", style="yellow", width=12)
+        table.add_column("Away Team", style="magenta", width=15)
+        table.add_column("vs", style="white", justify="center", width=3)
+        table.add_column("Home Team", style="magenta", width=15)
+        
+        for game in games:
+            date_str = game['date'][:10]
+            # Convert UTC time to Pacific time
+            time_str = self.nba._convert_to_pacific_time(game['date']) if game.get('date') else "--:-- PT"
+            away_team = f"{game['visitor_team_abbr']} {game['visitor_team'].split()[-1]}"
+            home_team = f"{game['home_team_abbr']} {game['home_team'].split()[-1]}"
+            
+            table.add_row(date_str, time_str, away_team, "vs", home_team)
+        
+        console.print(table)
+    
+    def display_game_stats_table(self, stats):
+        """Display game statistics in colorful tables."""
+        console.print()
+        
+        # Game header
+        header = f"[bold yellow]{stats.get('visitor_team')}[/bold yellow] [bold white]vs[/bold white] [bold yellow]{stats.get('home_team')}[/bold yellow]"
+        score = f"[bold green]{stats.get('visitor_score')}[/bold green] - [bold green]{stats.get('home_score')}[/bold green]"
+        
+        console.print(f"\n{header}")
+        console.print(f"Final Score: {score}\n")
+        
+        # Visitor team stats
+        visitor_table = Table(title=f"[bold magenta]{stats.get('visitor_team')} - Player Stats[/bold magenta]", 
+                             box=box.ROUNDED, border_style="magenta")
+        visitor_table.add_column("Player", style="cyan", width=20)
+        visitor_table.add_column("MIN", justify="center", style="white", width=6)
+        visitor_table.add_column("PTS", justify="center", style="yellow", width=4)
+        visitor_table.add_column("REB", justify="center", style="white", width=4)
+        visitor_table.add_column("AST", justify="center", style="white", width=4)
+        visitor_table.add_column("FG", justify="center", style="green", width=8)
+        visitor_table.add_column("3PT", justify="center", style="green", width=8)
+        visitor_table.add_column("FT", justify="center", style="green", width=8)
+        
+        for player in stats.get('visitor_player_stats', []):
+            points_color = "bold yellow" if int(player.get('points', 0)) >= 20 else "white"
+            visitor_table.add_row(
+                player['player'][:20],
+                str(player.get('minutes', '0:00')),
+                f"[{points_color}]{player['points']}[/{points_color}]",
+                str(player['rebounds']),
+                str(player['assists']),
+                str(player.get('fg', '0-0')),
+                str(player.get('fg3', '0-0')),
+                str(player.get('ft', '0-0'))
+            )
+        
+        console.print(visitor_table)
+        
+        # Home team stats
+        home_table = Table(title=f"[bold magenta]{stats.get('home_team')} - Player Stats[/bold magenta]", 
+                          box=box.ROUNDED, border_style="magenta")
+        home_table.add_column("Player", style="cyan", width=20)
+        home_table.add_column("MIN", justify="center", style="white", width=6)
+        home_table.add_column("PTS", justify="center", style="yellow", width=4)
+        home_table.add_column("REB", justify="center", style="white", width=4)
+        home_table.add_column("AST", justify="center", style="white", width=4)
+        home_table.add_column("FG", justify="center", style="green", width=8)
+        home_table.add_column("3PT", justify="center", style="green", width=8)
+        home_table.add_column("FT", justify="center", style="green", width=8)
+        
+        for player in stats.get('home_player_stats', []):
+            points_color = "bold yellow" if int(player.get('points', 0)) >= 20 else "white"
+            home_table.add_row(
+                player['player'][:20],
+                str(player.get('minutes', '0:00')),
+                f"[{points_color}]{player['points']}[/{points_color}]",
+                str(player['rebounds']),
+                str(player['assists']),
+                str(player.get('fg', '0-0')),
+                str(player.get('fg3', '0-0')),
+                str(player.get('ft', '0-0'))
+            )
+        
+        console.print(home_table)
     
     def exit_app(self):
         """Exit the application."""
-        print("\n" + "=" * 80)
-        print("Thanks for using NBA Stats Tool! 🏀")
-        print("=" * 80)
+        self.clear_screen()
+        exit_panel = Panel(
+            "[bold yellow]Thanks for using NBA Stats Tool!  👋[/bold yellow]\n\n"
+            "[bold white]Stay tuned for more NBA action!  🏀[/bold white]",
+            style="bold cyan",
+            border_style="cyan",
+            expand=False
+        )
+        console.print(exit_panel)
         self.running = False
         sys.exit(0)
     
     def run(self):
         """Main application loop."""
-        self.print_header("WELCOME TO NBA STATS TOOL")
-        print("\nYour one-stop shop for NBA game information!")
-        print("\nFeatures:")
-        print("  • View recent game scores")
-        print("  • See upcoming schedules")
-        print("  • Get detailed player statistics")
-        print("  • Track your favorite teams")
-        print()
+        self.print_welcome()
+        
+        console.print("[bold cyan]Welcome to your NBA companion![/bold cyan]")
+        console.print("[bold white]Track scores, schedules, and player stats in real-time.[/bold white]\n")
         self.pause()
+        
+        # Initial team selection
+        if not self.select_team_prompt():
+            self.exit_app()
         
         while self.running:
             try:
                 self.main_menu()
             except KeyboardInterrupt:
-                print("\n\nExiting...")
+                console.print("\n[bold yellow]👋 Exiting...[/bold yellow]")
                 self.exit_app()
             except Exception as e:
-                print(f"\n❌ An error occurred: {e}")
-                print("Returning to main menu...")
+                console.print(f"\n[bold red]❌ An error occurred: {e}[/bold red]")
+                console.print("[bold yellow]Returning to main menu...[/bold yellow]\n")
                 self.pause()
 
 

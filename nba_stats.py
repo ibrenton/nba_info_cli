@@ -10,7 +10,7 @@ Uses the ESPN API for NBA data (no API key required).
 """
 
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import json
 
@@ -51,6 +51,39 @@ class NBAStats:
         except requests.exceptions.RequestException as e:
             print(f"Error making API request: {e}")
             return {}
+    
+    def _convert_to_pacific_time(self, utc_time_str: str) -> str:
+        """
+        Convert UTC time string to Pacific time in 12-hour format.
+        
+        Args:
+            utc_time_str: ISO format time string (e.g., '2026-03-13T23:30Z')
+            
+        Returns:
+            Pacific time in format like '3:30 PM PT'
+        """
+        try:
+            # Parse UTC time
+            utc_time = datetime.fromisoformat(utc_time_str.replace('Z', '+00:00'))
+            
+            # Convert to Pacific (UTC-8 or UTC-7 for PDT)
+            # Using a simple offset of -8 hours (PST)
+            pacific_offset = timedelta(hours=-8)
+            pacific_time = utc_time + pacific_offset
+            
+            # Format as 12-hour time
+            hour = pacific_time.hour
+            minute = pacific_time.minute
+            am_pm = 'AM' if hour < 12 else 'PM'
+            
+            if hour == 0:
+                hour = 12
+            elif hour > 12:
+                hour -= 12
+            
+            return f"{hour}:{minute:02d} {am_pm} PT"
+        except:
+            return ""
     
     def get_recent_games(self, days: int = 7, team: Optional[str] = None) -> List[Dict]:
         """
@@ -208,53 +241,65 @@ class NBAStats:
         box_score = data.get('boxscore', {})
         players = box_score.get('players', [])
         
-        home_stats = []
-        visitor_stats = []
-        
-        # Process player stats
-        for team_data in players:
-            team_info = team_data.get('team', {})
-            is_home = team_info.get('homeAway') == 'home'
-            
-            for stat_category in team_data.get('statistics', []):
-                athletes = stat_category.get('athletes', [])
-                
-                for athlete in athletes:
-                    stats = athlete.get('stats', [])
-                    player_name = athlete.get('athlete', {}).get('displayName', 'Unknown')
-                    
-                    # Parse stats array
-                    player_stat = {
-                        'player': player_name,
-                        'team': team_info.get('abbreviation', ''),
-                        'minutes': stats[0] if len(stats) > 0 else '0:00',
-                        'fg': stats[1] if len(stats) > 1 else '0-0',
-                        'fg3': stats[2] if len(stats) > 2 else '0-0',
-                        'ft': stats[3] if len(stats) > 3 else '0-0',
-                        'rebounds': stats[4] if len(stats) > 4 else '0',
-                        'assists': stats[5] if len(stats) > 5 else '0',
-                        'steals': stats[6] if len(stats) > 6 else '0',
-                        'blocks': stats[7] if len(stats) > 7 else '0',
-                        'turnovers': stats[8] if len(stats) > 8 else '0',
-                        'points': stats[9] if len(stats) > 9 else '0',
-                    }
-                    
-                    if is_home:
-                        home_stats.append(player_stat)
-                    else:
-                        visitor_stats.append(player_stat)
-        
-        # Get team info
+        # Get team info from header to determine home/away
         competitions = header.get('competitions', [{}])[0]
         competitors = competitions.get('competitors', [])
         
         home_team = None
         away_team = None
+        home_team_id = None
+        away_team_id = None
+        
         for comp in competitors:
             if comp.get('homeAway') == 'home':
                 home_team = comp
+                home_team_id = comp.get('team', {}).get('id')
             else:
                 away_team = comp
+                away_team_id = comp.get('team', {}).get('id')
+        
+        home_stats = []
+        visitor_stats = []
+        
+        # Process player stats from both teams
+        for team_data in players:
+            team_info = team_data.get('team', {})
+            team_id = team_info.get('id')
+            
+            # Determine if this is home or away team by matching IDs
+            is_home = (team_id == home_team_id)
+            
+            # Get statistics array - ESPN uses a single stat category with all player stats
+            statistics = team_data.get('statistics', [])
+            if not statistics:
+                continue
+                
+            athletes = statistics[0].get('athletes', [])
+            
+            for athlete in athletes:
+                stats = athlete.get('stats', [])
+                player_name = athlete.get('athlete', {}).get('displayName', 'Unknown')
+                
+                # ESPN stats order: MIN, PTS, FG, 3PT, FT, REB, AST, TO, STL, BLK, OREB, DREB, PF, +/-
+                player_stat = {
+                    'player': player_name,
+                    'team': team_info.get('abbreviation', ''),
+                    'minutes': stats[0] if len(stats) > 0 else '0',
+                    'points': stats[1] if len(stats) > 1 else '0',
+                    'fg': stats[2] if len(stats) > 2 else '0-0',
+                    'fg3': stats[3] if len(stats) > 3 else '0-0',
+                    'ft': stats[4] if len(stats) > 4 else '0-0',
+                    'rebounds': stats[5] if len(stats) > 5 else '0',
+                    'assists': stats[6] if len(stats) > 6 else '0',
+                    'turnovers': stats[7] if len(stats) > 7 else '0',
+                    'steals': stats[8] if len(stats) > 8 else '0',
+                    'blocks': stats[9] if len(stats) > 9 else '0',
+                }
+                
+                if is_home:
+                    home_stats.append(player_stat)
+                else:
+                    visitor_stats.append(player_stat)
         
         return {
             'game_id': game_id,
@@ -274,21 +319,39 @@ class NBAStats:
         Returns:
             List of team dictionaries with details
         """
-        # Fetch standings which contains team info
-        data = self._make_request('standings')
-        
-        teams = []
-        for group in data.get('groups', []):
-            for team_entry in group.get('standings', []):
-                team = team_entry.get('team', {})
-                teams.append({
-                    'id': team.get('id'),
-                    'abbreviation': team.get('abbreviation'),
-                    'displayName': team.get('displayName'),
-                    'location': team.get('location'),
-                    'name': team.get('name'),
-                    'logo': team.get('logo')
-                })
+        # Hardcoded list of all 30 NBA teams with their official colors
+        teams = [
+            {'abbreviation': 'ATL', 'displayName': 'Atlanta Hawks', 'location': 'Atlanta', 'name': 'Hawks', 'primary': 'red', 'secondary': 'yellow'},
+            {'abbreviation': 'BOS', 'displayName': 'Boston Celtics', 'location': 'Boston', 'name': 'Celtics', 'primary': 'green', 'secondary': 'white'},
+            {'abbreviation': 'BKN', 'displayName': 'Brooklyn Nets', 'location': 'Brooklyn', 'name': 'Nets', 'primary': 'black', 'secondary': 'white'},
+            {'abbreviation': 'CHA', 'displayName': 'Charlotte Hornets', 'location': 'Charlotte', 'name': 'Hornets', 'primary': 'cyan', 'secondary': 'magenta'},
+            {'abbreviation': 'CHI', 'displayName': 'Chicago Bulls', 'location': 'Chicago', 'name': 'Bulls', 'primary': 'red', 'secondary': 'black'},
+            {'abbreviation': 'CLE', 'displayName': 'Cleveland Cavaliers', 'location': 'Cleveland', 'name': 'Cavaliers', 'primary': 'red', 'secondary': 'yellow'},
+            {'abbreviation': 'DAL', 'displayName': 'Dallas Mavericks', 'location': 'Dallas', 'name': 'Mavericks', 'primary': 'blue', 'secondary': 'white'},
+            {'abbreviation': 'DEN', 'displayName': 'Denver Nuggets', 'location': 'Denver', 'name': 'Nuggets', 'primary': 'blue', 'secondary': 'yellow'},
+            {'abbreviation': 'DET', 'displayName': 'Detroit Pistons', 'location': 'Detroit', 'name': 'Pistons', 'primary': 'blue', 'secondary': 'red'},
+            {'abbreviation': 'GS', 'displayName': 'Golden State Warriors', 'location': 'Golden State', 'name': 'Warriors', 'primary': 'blue', 'secondary': 'yellow'},
+            {'abbreviation': 'HOU', 'displayName': 'Houston Rockets', 'location': 'Houston', 'name': 'Rockets', 'primary': 'red', 'secondary': 'white'},
+            {'abbreviation': 'IND', 'displayName': 'Indiana Pacers', 'location': 'Indiana', 'name': 'Pacers', 'primary': 'blue', 'secondary': 'yellow'},
+            {'abbreviation': 'LAC', 'displayName': 'LA Clippers', 'location': 'Los Angeles', 'name': 'Clippers', 'primary': 'blue', 'secondary': 'red'},
+            {'abbreviation': 'LAL', 'displayName': 'Los Angeles Lakers', 'location': 'Los Angeles', 'name': 'Lakers', 'primary': 'yellow', 'secondary': 'magenta'},
+            {'abbreviation': 'MEM', 'displayName': 'Memphis Grizzlies', 'location': 'Memphis', 'name': 'Grizzlies', 'primary': 'blue', 'secondary': 'yellow'},
+            {'abbreviation': 'MIA', 'displayName': 'Miami Heat', 'location': 'Miami', 'name': 'Heat', 'primary': 'red', 'secondary': 'yellow'},
+            {'abbreviation': 'MIL', 'displayName': 'Milwaukee Bucks', 'location': 'Milwaukee', 'name': 'Bucks', 'primary': 'green', 'secondary': 'white'},
+            {'abbreviation': 'MIN', 'displayName': 'Minnesota Timberwolves', 'location': 'Minnesota', 'name': 'Timberwolves', 'primary': 'blue', 'secondary': 'green'},
+            {'abbreviation': 'NO', 'displayName': 'New Orleans Pelicans', 'location': 'New Orleans', 'name': 'Pelicans', 'primary': 'blue', 'secondary': 'red'},
+            {'abbreviation': 'NY', 'displayName': 'New York Knicks', 'location': 'New York', 'name': 'Knicks', 'primary': 'blue', 'secondary': 'bright_white'},
+            {'abbreviation': 'OKC', 'displayName': 'Oklahoma City Thunder', 'location': 'Oklahoma City', 'name': 'Thunder', 'primary': 'blue', 'secondary': 'bright_white'},
+            {'abbreviation': 'ORL', 'displayName': 'Orlando Magic', 'location': 'Orlando', 'name': 'Magic', 'primary': 'blue', 'secondary': 'white'},
+            {'abbreviation': 'PHI', 'displayName': 'Philadelphia 76ers', 'location': 'Philadelphia', 'name': '76ers', 'primary': 'blue', 'secondary': 'red'},
+            {'abbreviation': 'PHX', 'displayName': 'Phoenix Suns', 'location': 'Phoenix', 'name': 'Suns', 'primary': 'magenta', 'secondary': 'bright_white'},
+            {'abbreviation': 'POR', 'displayName': 'Portland Trail Blazers', 'location': 'Portland', 'name': 'Trail Blazers', 'primary': 'red', 'secondary': 'white'},
+            {'abbreviation': 'SAC', 'displayName': 'Sacramento Kings', 'location': 'Sacramento', 'name': 'Kings', 'primary': 'magenta', 'secondary': 'white'},
+            {'abbreviation': 'SA', 'displayName': 'San Antonio Spurs', 'location': 'San Antonio', 'name': 'Spurs', 'primary': 'white', 'secondary': 'black'},
+            {'abbreviation': 'TOR', 'displayName': 'Toronto Raptors', 'location': 'Toronto', 'name': 'Raptors', 'primary': 'red', 'secondary': 'white'},
+            {'abbreviation': 'UTAH', 'displayName': 'Utah Jazz', 'location': 'Utah', 'name': 'Jazz', 'primary': 'blue', 'secondary': 'yellow'},
+            {'abbreviation': 'WSH', 'displayName': 'Washington Wizards', 'location': 'Washington', 'name': 'Wizards', 'primary': 'blue', 'secondary': 'red'},
+        ]
         
         return teams
     

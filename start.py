@@ -23,12 +23,7 @@ def run_interactive():
         return
 
     ui = NBAStatsUI()
-    try:
-        ui.running = True
-        while ui.running:
-            ui.main_menu()
-    except KeyboardInterrupt:
-        print("\n\nExiting...")
+    ui.run()
 
 
 def main(argv: Optional[list] = None):
